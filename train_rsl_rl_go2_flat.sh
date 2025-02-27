@@ -4,7 +4,7 @@
 # Unitree Go2 env officially supports rsl_rl and skrl
 SCRIPT_PATH="scripts/reinforcement_learning/rsl_rl/train.py"
 TASK="Custom-Isaac-Velocity-Flat-Unitree-Go2-v0"
-NUM_ENVS="40961"
+NUM_ENVS="4096"
 MAX_ITERATIONS="10000"
 SEED="100"
 VIDEO_LENGTH="200" # in steps

@@ -1,0 +1,165 @@
+\documentclass{article}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{geometry}
+
+\geometry{margin=1in}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+
+\lstdefinestyle{mystyle}{
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,
+    breaklines=true,
+    keepspaces=true,
+    showspaces=false,
+    showstringspaces=false,
+    numbers=left,
+    numberstyle=\tiny\color{codegray},
+    stepnumber=1,
+    tabsize=4
+}
+
+\lstset{style=mystyle}
+
+\title{Detailed Explanation of Velocity Environment Configuration}
+\author{Isaac Lab Documentation}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+This document provides a detailed explanation of the velocity environment configuration file used in the Isaac Lab project. The configuration defines a reinforcement learning environment for training robots to perform velocity-based locomotion tasks.
+
+\section{Scene Configuration}
+The scene configuration (\texttt{MySceneCfg}) defines the physical environment where the robot operates:
+
+\subsection{Terrain}
+\begin{itemize}
+    \item Uses a terrain generator with rough terrain settings
+    \item Configurable friction and restitution properties
+    \item Visual materials using marble textures
+    \item Maximum initial terrain level set to 5
+\end{itemize}
+
+\subsection{Sensors}
+The environment includes two main sensors:
+\begin{itemize}
+    \item \textbf{Height Scanner}: A ray-casting sensor that:
+    \begin{itemize}
+        \item Mounted on robot base
+        \item Uses a grid pattern with 0.1m resolution
+        \item Covers area of 1.6m x 1.0m
+    \end{itemize}
+    \item \textbf{Contact Forces}: Tracks:
+    \begin{itemize}
+        \item Contact forces on robot parts
+        \item 3-frame history
+        \item Air time tracking
+    \end{itemize}
+\end{itemize}
+
+\section{MDP Components}
+
+\subsection{Commands Configuration}
+The \texttt{CommandsCfg} class defines how velocity commands are generated:
+\begin{itemize}
+    \item Base velocity commands with ranges:
+    \begin{itemize}
+        \item Linear velocity X: [-1.0, 1.0] m/s
+        \item Linear velocity Y: [-1.0, 1.0] m/s
+        \item Angular velocity Z: [-1.0, 1.0] rad/s
+        \item Heading: [-π, π] rad
+    \end{itemize}
+    \item Resampling time: 10 seconds
+    \item Heading control stiffness: 0.5
+\end{itemize}
+
+\subsection{Actions Configuration}
+Defines how the robot can be controlled:
+\begin{itemize}
+    \item Joint position control
+    \item Scaling factor of 0.5
+    \item Uses default offset positions
+\end{itemize}
+
+\subsection{Observations Configuration}
+The observation space includes:
+\begin{itemize}
+    \item Base linear and angular velocities
+    \item Projected gravity vector
+    \item Current velocity commands
+    \item Joint positions and velocities
+    \item Previous actions
+    \item Height scan data
+\end{itemize}
+
+Each observation includes carefully tuned noise parameters for robustness.
+
+\subsection{Events Configuration}
+Events are divided into three categories:
+
+\subsubsection{Startup Events}
+\begin{itemize}
+    \item Physics material randomization
+    \item Base mass modifications
+\end{itemize}
+
+\subsubsection{Reset Events}
+\begin{itemize}
+    \item External force/torque application
+    \item Base state reset
+    \item Joint state reset
+\end{itemize}
+
+\subsubsection{Interval Events}
+\begin{itemize}
+    \item Periodic robot pushing (every 10-15 seconds)
+\end{itemize}
+
+\subsection{Rewards Configuration}
+The reward function combines multiple terms:
+
+\subsubsection{Task Rewards}
+\begin{itemize}
+    \item Tracking linear velocity (weight: 1.0)
+    \item Tracking angular velocity (weight: 0.5)
+\end{itemize}
+
+\subsubsection{Penalty Terms}
+\begin{itemize}
+    \item Vertical linear velocity (weight: -2.0)
+    \item XY angular velocity (weight: -0.05)
+    \item Joint torques (weight: -1.0e-5)
+    \item Joint accelerations (weight: -2.5e-7)
+    \item Action rate (weight: -0.01)
+    \item Feet air time (weight: 0.125)
+    \item Undesired contacts (weight: -1.0)
+\end{itemize}
+
+\section{Environment Settings}
+Key environment parameters:
+\begin{itemize}
+    \item 4096 parallel environments
+    \item 2.5m spacing between environments
+    \item 20-second episode length
+    \item 5ms physics timestep
+    \item 4x action decimation
+\end{itemize}
+
+\section{Curriculum}
+The environment supports curriculum learning through:
+\begin{itemize}
+    \item Progressive terrain difficulty
+    \item Automatic terrain level adjustment based on robot performance
+\end{itemize}
+
+\end{document} 

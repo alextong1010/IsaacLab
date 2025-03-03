@@ -8,6 +8,7 @@
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import math
 
 from isaaclab.app import AppLauncher
 
@@ -29,6 +30,19 @@ parser.add_argument(
     help="Use the pre-trained checkpoint from Nucleus.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+
+# Custom velocity ranges
+parser.add_argument("--use_custom_velocity", action="store_true", default=False, 
+                    help="Use custom velocity ranges instead of the ones in the config")
+parser.add_argument("--lin_vel_x_min", type=float, default=-1.0, help="Minimum linear velocity in x direction")
+parser.add_argument("--lin_vel_x_max", type=float, default=1.0, help="Maximum linear velocity in x direction")
+parser.add_argument("--lin_vel_y_min", type=float, default=-1.0, help="Minimum linear velocity in y direction")
+parser.add_argument("--lin_vel_y_max", type=float, default=1.0, help="Maximum linear velocity in y direction")
+parser.add_argument("--ang_vel_z_min", type=float, default=-1.0, help="Minimum angular velocity around z axis")
+parser.add_argument("--ang_vel_z_max", type=float, default=1.0, help="Maximum angular velocity around z axis")
+parser.add_argument("--heading_min", type=float, default=-math.pi, help="Minimum heading angle")
+parser.add_argument("--heading_max", type=float, default=math.pi, help="Maximum heading angle")
+
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -67,6 +81,28 @@ def main():
     env_cfg = parse_env_cfg(
         args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric
     )
+
+    if args_cli.use_custom_velocity:
+        print("[INFO] Using custom velocity ranges from command line arguments")
+        # Set velocity ranges directly in the config
+        
+        # Create new ranges object with the command line values
+        lin_vel_x = (args_cli.lin_vel_x_min, args_cli.lin_vel_x_max)
+        lin_vel_y = (args_cli.lin_vel_y_min, args_cli.lin_vel_y_max)
+        ang_vel_z = (args_cli.ang_vel_z_min, args_cli.ang_vel_z_max)
+        heading = (args_cli.heading_min, args_cli.heading_max)
+        
+        # Update the ranges in the config
+        env_cfg.commands.base_velocity.ranges.lin_vel_x = lin_vel_x
+        env_cfg.commands.base_velocity.ranges.lin_vel_y = lin_vel_y
+        env_cfg.commands.base_velocity.ranges.ang_vel_z = ang_vel_z
+        env_cfg.commands.base_velocity.ranges.heading = heading
+        
+        print(f"  Linear velocity X: {lin_vel_x}")
+        print(f"  Linear velocity Y: {lin_vel_y}")
+        print(f"  Angular velocity Z: {ang_vel_z}")
+        print(f"  Heading: {heading}")
+
     agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
 
     # specify directory for logging experiments
@@ -94,8 +130,15 @@ def main():
 
     # wrap for video recording
     if args_cli.video:
+        # Create a folder name that includes velocity information if custom velocities are used
+        video_folder_name = "play"
+        if args_cli.use_custom_velocity:
+            video_folder_name = f"play_vel_x_{args_cli.lin_vel_x_min}_{args_cli.lin_vel_x_max}_y_{args_cli.lin_vel_y_min}_{args_cli.lin_vel_y_max}_ang_{args_cli.ang_vel_z_min}_{args_cli.ang_vel_z_max}_heading_{args_cli.heading_min}_{args_cli.heading_max}"
+            # Shorten the folder name to avoid excessively long paths
+            video_folder_name = video_folder_name.replace(".", "p")  # Replace dots with 'p' for better folder names
+            
         video_kwargs = {
-            "video_folder": os.path.join(log_dir, "videos", "play"),
+            "video_folder": os.path.join(log_dir, "videos", video_folder_name),
             "step_trigger": lambda step: step == 0,
             "video_length": args_cli.video_length,
             "disable_logger": True,
@@ -115,14 +158,16 @@ def main():
     # obtain the trained policy for inference
     policy = ppo_runner.get_inference_policy(device=env.unwrapped.device)
 
-    # export policy to onnx/jit
-    export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
-    export_policy_as_jit(
-        ppo_runner.alg.actor_critic, ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.pt"
-    )
-    export_policy_as_onnx(
-        ppo_runner.alg.actor_critic, normalizer=ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.onnx"
-    )
+    # ONLY export policy to onnx/jit if custom velocities are not used
+    if not args_cli.use_custom_velocity:
+        # export policy to onnx/jit
+        export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
+        export_policy_as_jit(
+            ppo_runner.alg.actor_critic, ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.pt"
+        )
+        export_policy_as_onnx(
+            ppo_runner.alg.actor_critic, normalizer=ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.onnx"
+        )
 
     dt = env.unwrapped.physics_dt
 

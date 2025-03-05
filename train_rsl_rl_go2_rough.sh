@@ -11,7 +11,7 @@ VIDEO_LENGTH="200" # in steps
 VIDEO_INTERVAL="10000" # in steps
 
 # Use this to toggle which cuda device gets used for training
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 export HYDRA_FULL_ERROR=1
 
 

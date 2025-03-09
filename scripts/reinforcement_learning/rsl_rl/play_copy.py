@@ -179,6 +179,9 @@ def main():
     print_interval = 20
     print_counter = 0
     
+    # Track total rewards
+    total_rewards = torch.zeros(env.unwrapped.num_envs, device=env.unwrapped.device)
+    
     # simulate environment
     while simulation_app.is_running():
         start_time = time.time()
@@ -187,7 +190,10 @@ def main():
             # agent stepping
             actions = policy(obs)
             # env stepping
-            obs, _, _, _ = env.step(actions)
+            obs, rewards, _, _ = env.step(actions)
+            
+            # Accumulate rewards
+            total_rewards += rewards
             
             # Print base height every N steps
             print_counter += 1
@@ -196,7 +202,9 @@ def main():
                 robot_base = env.unwrapped.scene["robot"]
                 base_heights = robot_base.data.root_pos_w[:, 2]
                 # Print the heights (first few environments)
-                print(f"[INFO] Robot base heights: {base_heights[:4].cpu().numpy()} (showing first 5 envs)")
+                print(f"[INFO] Robot base heights: {base_heights[:3].cpu().numpy()} (showing first 5 envs)")
+                # Print total rewards (first few environments)
+                print(f"[INFO] Total rewards: {total_rewards[:,:3].cpu().numpy()} (showing first 5 envs)")
                 print_counter = 0
                 
         if args_cli.video:

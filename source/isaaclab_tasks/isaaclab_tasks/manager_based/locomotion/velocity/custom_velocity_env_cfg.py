@@ -351,6 +351,8 @@ class CustomLocomotionVelocityRoughEnvCfg(ManagerBasedRLEnvCfg):
     terminations: CustomTerminationsCfg = CustomTerminationsCfg()
     events: CustomEventCfg = CustomEventCfg()
     curriculum: CustomCurriculumCfg = CustomCurriculumCfg()
+    # Flag to make rewards only positive
+    only_positive_rewards: bool = False
 
     def __post_init__(self):
         """Post initialization."""

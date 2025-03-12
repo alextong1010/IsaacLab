@@ -29,12 +29,6 @@ parser.add_argument("--seed", type=int, default=None, help="Seed used for the en
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
 parser.add_argument("--only_positive_rewards", action="store_true", default=False, 
                     help="Clip rewards to be non-negative")
-parser.add_argument("--save_actions", action="store_true", default=False, 
-                    help="Save actions to a JSON file after a specified iteration")
-parser.add_argument("--save_actions_start_iter", type=int, default=0,
-                    help="Iteration to start saving actions")
-parser.add_argument("--save_actions_count", type=int, default=240, # 24 steps per env per iteration so 240 is 10 iterations
-                    help="Number of actions to save")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -100,86 +94,6 @@ class PositiveRewardRslRlVecEnvWrapper(RslRlVecEnvWrapper):
             
         return obs, rewards, dones, infos
 
-# Add this class after the PositiveRewardRslRlVecEnvWrapper class
-class ActionSavingOnPolicyRunner(OnPolicyRunner):
-    """Extension of OnPolicyRunner that can save actions to a file in real-time."""
-    
-    def __init__(self, env, config, save_actions=False, save_actions_start_iter=0, 
-                 save_actions_count=240, **kwargs):
-        super().__init__(env, config, **kwargs)
-        self.save_actions = save_actions
-        self.save_actions_start_iter = save_actions_start_iter
-        self.save_actions_count = save_actions_count
-        self.saved_actions_count = 0
-        self.actions_path = None
-        
-        # Initialize the JSON file if we're saving actions
-        if self.save_actions:
-            self.actions_path = os.path.join(self.log_dir, "saved_actions.json")
-            # Create an empty list in the JSON file
-            with open(self.actions_path, 'w') as f:
-                json.dump([], f)
-            print(f"[INFO] Initialized actions file at {self.actions_path}")
-            print(f"[INFO] Will save up to {self.save_actions_count} actions starting from iteration {self.save_actions_start_iter}")
-    
-    def _append_action_to_json(self, action_data):
-        """Append a single action to the JSON file."""
-        if not self.actions_path:
-            return
-            
-        # Read the current content
-        try:
-            with open(self.actions_path, 'r') as f:
-                actions = json.load(f)
-        except (json.JSONDecodeError, FileNotFoundError):
-            # If file is empty or doesn't exist, start with empty list
-            actions = []
-        
-        # Convert tensor to list for JSON serialization
-        serializable_action = {
-            'iteration': action_data['iteration'],
-            'step': action_data['step'],
-            'actions': action_data['actions'].cpu().numpy().tolist()
-        }
-        
-        # Append the new action
-        actions.append(serializable_action)
-        
-        # Write back to file
-        with open(self.actions_path, 'w') as f:
-            json.dump(actions, f, indent=2)
-    
-    def _train_step(self):
-        # Execute the original training step
-        result = super()._train_step()
-        
-        # Check if we should save actions from this iteration
-        if (self.save_actions and 
-            self.current_learning_iteration >= self.save_actions_start_iter and 
-            self.saved_actions_count < self.save_actions_count):
-            
-            # During the rollout phase, save the actions
-            for step in range(self.num_steps_per_env):
-                # Get the actions from the current batch
-                actions = self.batch["actions"][:, step].clone()
-                
-                # Create action data
-                action_data = {
-                    'iteration': self.current_learning_iteration,
-                    'step': step,  # This resets each iteration as requested
-                    'actions': actions
-                }
-                
-                # Save the action to the JSON file immediately
-                self._append_action_to_json(action_data)
-                self.saved_actions_count += 1
-                
-                # Stop if we've saved enough actions
-                if self.saved_actions_count >= self.save_actions_count:
-                    print(f"[INFO] Collected {self.save_actions_count} actions at iteration {self.current_learning_iteration}")
-                    break
-        
-        return result
 
 @hydra_task_config(args_cli.task, "rsl_rl_cfg_entry_point")
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlOnPolicyRunnerCfg):
@@ -240,22 +154,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if hasattr(env_cfg, "only_positive_rewards") and env_cfg.only_positive_rewards:
         env = PositiveRewardRslRlVecEnvWrapper(env, clip_rewards=True)
     else:
-        env = RslRlVecEnvWrapper(env)
+        env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
     # create runner from rsl-rl
-    if args_cli.save_actions:
-        print(f"[INFO] Will save {args_cli.save_actions_count} actions starting from iteration {args_cli.save_actions_start_iter}")
-        runner = ActionSavingOnPolicyRunner(
-            env, 
-            agent_cfg.to_dict(), 
-            log_dir=log_dir, 
-            device=agent_cfg.device,
-            save_actions=args_cli.save_actions,
-            save_actions_start_iter=args_cli.save_actions_start_iter,
-            save_actions_count=args_cli.save_actions_count
-        )
-    else:
-        runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+    runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
     
     # write git state to logs
     runner.add_git_repo_to_log(__file__)

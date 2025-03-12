@@ -3,9 +3,10 @@
 # Change to workflow to be one of {rsl_rl, skrl, sb3, or rl_games}
 # Unitree Go2 env officially supports rsl_rl and skrl
 SCRIPT_PATH="scripts/reinforcement_learning/rsl_rl/train.py"
-TASK="Custom-Isaac-Velocity-Rough-Unitree-Go2-v0"
+TASK="Isaac-Velocity-Rough-Unitree-Go2-v0"
 NUM_ENVS="4096"
-MAX_ITERATIONS="10000"
+# MAX_ITERATIONS="10000"
+MAX_ITERATIONS="25000"
 SEED="100"
 VIDEO_LENGTH="200" # in steps
 VIDEO_INTERVAL="10000" # in steps

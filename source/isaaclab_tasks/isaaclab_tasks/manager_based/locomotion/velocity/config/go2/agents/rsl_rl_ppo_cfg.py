@@ -35,6 +35,32 @@ class UnitreeGo2RoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         desired_kl=0.01,
         max_grad_norm=1.0,
     )
+    # clip_actions: float | list | None = None
+    # """The clipping value for actions. 
+    # If float, all actions are clipped to [-clip_actions, clip_actions].
+    # If list, each action dimension is clipped to the corresponding range.
+    # If None, then no clipping is done."""
+        
+    # clip_actions = None
+    clip_actions = 20
+    # Define per-joint action limits
+    # Note: These need to be scaled by the action scale (0.25) from rough_env_cfg.py
+    # action_scale = 1
+    # clip_actions = [
+    #     [-1.0472 * action_scale, 1.0472 * action_scale],    # FL_hip_joint
+    #     [-1.0472 * action_scale, 1.0472 * action_scale],    # FR_hip_joint
+    #     [-1.0472 * action_scale, 1.0472 * action_scale],    # RL_hip_joint
+    #     [-1.0472 * action_scale, 1.0472 * action_scale],    # RR_hip_joint
+    #     [-1.5708 * action_scale, 3.4907 * action_scale],    # FL_thigh_joint
+    #     [-1.5708 * action_scale, 3.4907 * action_scale],    # FR_thigh_joint
+    #     [-0.5236 * action_scale, 4.5379 * action_scale],    # RL_thigh_joint
+    #     [-0.5236 * action_scale, 4.5379 * action_scale],    # RR_thigh_joint
+    #     [-2.7227 * action_scale, -0.83776 * action_scale],  # FL_calf_joint
+    #     [-2.7227 * action_scale, -0.83776 * action_scale],  # FR_calf_joint
+    #     [-2.7227 * action_scale, -0.83776 * action_scale],  # RL_calf_joint
+    #     [-2.7227 * action_scale, -0.83776 * action_scale],  # RR_calf_joint
+    # ]
+
 
 
 @configclass

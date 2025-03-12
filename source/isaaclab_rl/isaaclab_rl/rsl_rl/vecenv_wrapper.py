@@ -5,6 +5,7 @@
 
 import gymnasium as gym
 import torch
+import numpy as np
 
 from rsl_rl.env import VecEnv
 
@@ -30,7 +31,7 @@ class RslRlVecEnvWrapper(VecEnv):
         https://github.com/leggedrobotics/rsl_rl/blob/master/rsl_rl/env/vec_env.py
     """
 
-    def __init__(self, env: ManagerBasedRLEnv | DirectRLEnv):
+    def __init__(self, env: ManagerBasedRLEnv | DirectRLEnv, clip_actions: float | list | None = None):
         """Initializes the wrapper.
 
         Note:
@@ -38,6 +39,9 @@ class RslRlVecEnvWrapper(VecEnv):
 
         Args:
             env: The environment to wrap around.
+            clip_actions: The clipping value for actions. If ``None``, then no clipping is done.
+                         If float, all actions are clipped to [-clip_actions, clip_actions].
+                         If list, each action dimension is clipped to the corresponding range.
 
         Raises:
             ValueError: When the environment is not an instance of :class:`ManagerBasedRLEnv` or :class:`DirectRLEnv`.
@@ -50,10 +54,23 @@ class RslRlVecEnvWrapper(VecEnv):
             )
         # initialize the wrapper
         self.env = env
+        self.clip_actions = clip_actions
+        
+        # Convert clip_actions to tensor if it's a list of ranges
+        if isinstance(clip_actions, list) and len(clip_actions) > 0 and isinstance(clip_actions[0], list):
+            self.clip_actions_lower = torch.tensor([limit[0] for limit in clip_actions], 
+                                                  device=self.unwrapped.device)
+            self.clip_actions_upper = torch.tensor([limit[1] for limit in clip_actions], 
+                                                  device=self.unwrapped.device)
+        else:
+            self.clip_actions_lower = None
+            self.clip_actions_upper = None
+
         # store information required by wrapper
         self.num_envs = self.unwrapped.num_envs
         self.device = self.unwrapped.device
         self.max_episode_length = self.unwrapped.max_episode_length
+        # obtain dimensions of the environment
         if hasattr(self.unwrapped, "action_manager"):
             self.num_actions = self.unwrapped.action_manager.total_action_dim
         else:
@@ -104,7 +121,16 @@ class RslRlVecEnvWrapper(VecEnv):
 
     @property
     def action_space(self) -> gym.Space:
-        """Returns the :attr:`Env` :attr:`action_space`."""
+        # """Returns the :attr:`Env` :attr:`action_space`."""
+        # if isinstance(self.clip_actions, float):
+        #     return gym.spaces.Box(low=-self.clip_actions, high=self.clip_actions, shape=(self.num_actions,))
+        # elif isinstance(self.clip_actions, list) and len(self.clip_actions) > 0 and isinstance(self.clip_actions[0], list):
+        #     # For per-joint limits
+        #     low = np.array([limit[0] for limit in self.clip_actions])
+        #     high = np.array([limit[1] for limit in self.clip_actions])
+        #     return gym.spaces.Box(low=low, high=high, shape=(self.num_actions,))
+        # else: #self.clip_actions is None:
+        #     return self.env.action_space
         return self.env.action_space
 
     @classmethod
@@ -160,6 +186,50 @@ class RslRlVecEnvWrapper(VecEnv):
         return obs_dict["policy"], {"observations": obs_dict}
 
     def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+        
+        # Debug: Print actions before clipping
+        # print("="*50)
+        # print("ACTIONS BEFORE CLIPPING:")
+        # print(f"Shape: {actions.shape}")
+        # print(f"Min: {actions.min().item()}, Max: {actions.max().item()}")
+        # print(f"Mean: {actions.mean().item()}, Std: {actions.std().item()}")
+        # # Print a few sample actions
+        # if actions.shape[0] > 0:
+        #     print(f"First env actions: {actions[0]}")
+        
+        # clip actions
+        if self.clip_actions is not None:
+            if self.clip_actions_lower is not None and self.clip_actions_upper is not None:
+                # Per-joint clipping using the precomputed tensors
+                # print("Using per-joint clipping")
+                # print(f"Lower bounds: {self.clip_actions_lower}")
+                # print(f"Upper bounds: {self.clip_actions_upper}")
+                actions_before = actions.clone()
+                actions = torch.max(torch.min(actions, self.clip_actions_upper), self.clip_actions_lower)
+                # Check if any actions were clipped
+                # clipped_mask = (actions != actions_before)
+                # if clipped_mask.any():
+                #     print(f"Number of clipped actions: {clipped_mask.sum().item()}")
+                #     print(f"Percentage of clipped actions: {clipped_mask.sum().item() / actions.numel() * 100:.2f}%")
+            else:
+                # Uniform clipping
+                # print(f"Using uniform clipping with bounds: [{-self.clip_actions}, {self.clip_actions}]")
+                actions_before = actions.clone()
+                actions = torch.clamp(actions, -self.clip_actions, self.clip_actions)
+                # Check if any actions were clipped
+                # clipped_mask = (actions != actions_before)
+                # if clipped_mask.any():
+                #     print(f"Number of clipped actions: {clipped_mask.sum().item()}")
+                #     print(f"Percentage of clipped actions: {clipped_mask.sum().item() / actions.numel() * 100:.2f}%")
+        
+        # # Debug: Print actions after clipping
+        # print("ACTIONS AFTER CLIPPING:")
+        # print(f"Min: {actions.min().item()}, Max: {actions.max().item()}")
+        # print(f"Mean: {actions.mean().item()}, Std: {actions.std().item()}")
+        # if actions.shape[0] > 0:
+        #     print(f"First env actions: {actions[0]}")
+        # print("="*50)
+        
         # record step information
         obs_dict, rew, terminated, truncated, extras = self.env.step(actions)
         # compute dones for compatibility with RSL-RL

@@ -1,5 +1,5 @@
 SCRIPT_PATH="scripts/reinforcement_learning/skrl/play.py"
-TASK="Custom-Isaac-Velocity-Rough-Unitree-Go2-v0"
+TASK="Isaac-Velocity-Rough-Unitree-Go2-Play-v0"
 NUM_ENVS="4"
 VIDEO_LENGTH="800" # in steps
 # CHECKPOINT_PATH="./logs/skrl/unitree_go2_rough/2025-02-28_00-21-07_ppo_torch/checkpoints/best_agent.pt"

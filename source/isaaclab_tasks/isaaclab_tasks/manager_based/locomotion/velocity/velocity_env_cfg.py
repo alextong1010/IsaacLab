@@ -90,18 +90,18 @@ class MySceneCfg(InteractiveSceneCfg):
 @configclass
 class CommandsCfg:
     """Command specifications for the MDP."""
-    # base_velocity = mdp.UniformVelocityCommandCfg(
-    #     asset_name="robot",
-    #     resampling_time_range=(10.0, 10.0),
-    #     rel_standing_envs=0.02,
-    #     rel_heading_envs=1.0,
-    #     heading_command=True,
-    #     heading_control_stiffness=0.5,
-    #     debug_vis=True,
-    #     ranges=mdp.UniformVelocityCommandCfg.Ranges(
-    #         lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi)
-    #     ),
-    # )
+    base_velocity = mdp.UniformVelocityCommandCfg(
+        asset_name="robot",
+        resampling_time_range=(10.0, 10.0),
+        rel_standing_envs=0.02,
+        rel_heading_envs=1.0,
+        heading_command=True,
+        heading_control_stiffness=0.5,
+        debug_vis=True,
+        ranges=mdp.UniformVelocityCommandCfg.Ranges(
+            lin_vel_x=(-1.0, 1.0), lin_vel_y=(-0.1, 0.1), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi)
+        ),
+    )
     # base_velocity = mdp.UniformVelocityCommandCfg(
     #     asset_name="robot",
     #     resampling_time_range=(10.0, 10.0),
@@ -115,18 +115,18 @@ class CommandsCfg:
     #     ),
     # )
 
-    base_velocity = mdp.UniformVelocityCommandCfg(
-        asset_name="robot",
-        resampling_time_range=(10.0, 10.0),
-        rel_standing_envs=0.02,
-        rel_heading_envs=1.0,
-        heading_command=True,
-        heading_control_stiffness=0.5,
-        debug_vis=True,
-        ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-2, 2), lin_vel_y=(0, 0), ang_vel_z=(0, 0), heading=(0, 0)
-        ),
-    )
+    # base_velocity = mdp.UniformVelocityCommandCfg(
+    #     asset_name="robot",
+    #     resampling_time_range=(10.0, 10.0),
+    #     rel_standing_envs=0.02,
+    #     rel_heading_envs=1.0,
+    #     heading_command=True,
+    #     heading_control_stiffness=0.5,
+    #     debug_vis=True,
+    #     ranges=mdp.UniformVelocityCommandCfg.Ranges(
+    #         lin_vel_x=(-2, 2), lin_vel_y=(0, 0), ang_vel_z=(0, 0), heading=(0, 0)
+    #     ),
+    # )
 
 
 @configclass
@@ -219,9 +219,9 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.55, 0.75),
-            "dynamic_friction_range": (0.35, 0.55),
-            "restitution_range": (0.0, 0.2),
+            "static_friction_range": (0.5, 1.3),
+            "dynamic_friction_range": (0.3, 1.1),
+            "restitution_range": (0.0, 0.5),
             "num_buckets": 64,
             "make_consistent": True,  # Ensure dynamic friction ≤ static friction
         },
@@ -283,8 +283,8 @@ class EventCfg:
     push_robot = EventTerm(
         func=mdp.push_by_setting_velocity,
         mode="interval",
-        interval_range_s=(5.0, 10.0),
-        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-1.0, 1.0)}},
+        interval_range_s=(10.0, 15.0),
+        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
     )
 
 
@@ -305,17 +305,18 @@ class RewardsCfg:
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-1.0e-5)
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
-    base_height_l2 = RewTerm(
-        func=mdp.base_height_l2, 
-        weight=-1.0, 
-        params={
-            "target_height": 0.22,
-            "sensor_cfg": SceneEntityCfg("height_scanner")
-        }
-    )
+    # base_height_l2 = RewTerm(
+    #     func=mdp.base_height_l2, 
+    #     weight=-1.0, 
+    #     params={
+    #         "target_height": 0.22,
+    #         "sensor_cfg": SceneEntityCfg("height_scanner")
+    #     }
+    # )
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
-        weight=0.125,
+        weight=0.0,
+        # weight=0.125,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*FOOT"),
             "command_name": "base_velocity",
@@ -325,11 +326,13 @@ class RewardsCfg:
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
         weight=-1.0,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
+        # params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH|.*CALF"), "threshold": 1.0},
     )
     # -- optional penalties
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=0.0)
-    dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
+    # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
+    dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-10.0)
 
 
 @configclass

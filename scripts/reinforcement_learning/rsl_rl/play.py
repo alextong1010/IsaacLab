@@ -182,6 +182,25 @@ def main():
         with torch.inference_mode():
             # agent stepping
             actions = policy(obs)
+            # print shape of obs and actions
+            print(f"Obs shape: {obs.shape}")
+            print(f"Actions shape: {actions.shape}")
+
+            # Access linear velocity from the environment
+            if hasattr(env.unwrapped, 'robot'):
+                # For DirectRLEnv implementations
+                lin_vel = env.unwrapped.robot.data.root_lin_vel_b
+                print(f"Linear velocity (body frame): {lin_vel[0]}")
+            elif hasattr(env.unwrapped, 'scene'):
+                # For ManagerBasedEnv implementations
+                try:
+                    robot = env.unwrapped.scene['robot']
+                    lin_vel = robot.data.root_lin_vel_b
+                    print(f"Linear velocity shape: {lin_vel.shape}")
+                    print(f"Linear velocity (body frame): {lin_vel[0]}")
+                except KeyError:
+                    print("Robot entity not found in scene")
+            
             # env stepping
             obs, _, _, _ = env.step(actions)
         if args_cli.video:

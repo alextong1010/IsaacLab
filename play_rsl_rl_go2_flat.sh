@@ -10,7 +10,7 @@ VIDEO_LENGTH="800" # in steps
 # Checkpoint for DEFAULT without base linear velocity
 # LOAD_CHECKPOINT="./logs/rsl_rl/unitree_go2_flat/2025-02-25_19-58-59/model_9999.pt" 
 
-LOAD_CHECKPOINT="./logs/rsl_rl/unitree_go2_flat/2025-03-10_13-55-55/model_9999.pt"
+LOAD_CHECKPOINT="./logs/rsl_rl/unitree_go2_flat/2025-03-13_04-47-22/model_9999.pt"
 
 # Use this to toggle which cuda device gets used for training
 export CUDA_VISIBLE_DEVICES=0

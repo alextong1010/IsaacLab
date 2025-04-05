@@ -9,6 +9,7 @@
 
 import argparse
 import math
+import os
 
 from isaaclab.app import AppLauncher
 
@@ -43,6 +44,28 @@ parser.add_argument("--ang_vel_z_max", type=float, default=1.0, help="Maximum an
 parser.add_argument("--heading_min", type=float, default=-math.pi, help="Minimum heading angle")
 parser.add_argument("--heading_max", type=float, default=math.pi, help="Maximum heading angle")
 
+# Add these arguments after the existing custom velocity arguments
+parser.add_argument("--use_velocity_sequence", action="store_true", default=False,
+                    help="Use a sequence of velocities that change over time")
+parser.add_argument("--velocity_sequence_interval", type=int, default=10,
+                    help="Number of timesteps between velocity changes")
+parser.add_argument("--velocity_sequence_json", type=str, default="",
+                    help="JSON string or path to JSON file containing velocity sequence")
+
+# Add these arguments after the existing velocity sequence arguments
+parser.add_argument("--log_data", action="store_true", default=False,
+                    help="Save observations, linear velocities, and actions to a JSON file")
+parser.add_argument("--log_file", type=str, default="robot_data.json",
+                    help="Filename to save the logged data")
+parser.add_argument("--log_interval", type=int, default=1,
+                    help="Interval (in timesteps) at which to log data")
+
+# Add these arguments after the existing log_data arguments
+parser.add_argument("--save_metadata", action="store_true", default=False,
+                    help="Save metadata about observations, actions, and velocities to a separate JSON file")
+parser.add_argument("--metadata_file", type=str, default="metadata.json",
+                    help="Filename for the metadata")
+
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -75,6 +98,7 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper, expor
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path, parse_env_cfg
 
+from isaaclab.managers import ObservationTermCfg
 
 def main():
     """Play with RSL-RL agent."""
@@ -149,7 +173,7 @@ def main():
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
     # wrap around environment for rsl-rl
-    env = RslRlVecEnvWrapper(env)
+    env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
     print(f"[INFO]: Loading model checkpoint from: {resume_path}")
     # load previously trained model
@@ -175,44 +199,174 @@ def main():
     # reset environment
     obs, _ = env.get_observations()
     timestep = 0
+    current_velocity_index = 0
+    
+    # Initialize data logging if enabled
+    logged_data = []
+
+    # Parse velocity sequence if provided
+    velocity_sequence = []
+    if args_cli.use_velocity_sequence and args_cli.velocity_sequence_json:
+        import json
+        
+        try:
+            # Check if the input is a file path or a JSON string
+            if os.path.isfile(args_cli.velocity_sequence_json):
+                with open(args_cli.velocity_sequence_json, 'r') as f:
+                    velocity_sequence = json.load(f)
+                print(f"[INFO] Loaded velocity sequence from file: {args_cli.velocity_sequence_json}")
+            else:
+                # Try to parse as a JSON string
+                velocity_sequence = json.loads(args_cli.velocity_sequence_json)
+                print(f"[INFO] Parsed velocity sequence from command line")
+            
+            # Validate the sequence format
+            for i, entry in enumerate(velocity_sequence):
+                if not isinstance(entry, dict) or not all(k in entry for k in ['x', 'y', 'ang']):
+                    raise ValueError(f"Entry {i} is not in the correct format. Expected dict with 'x', 'y', 'ang' keys.")
+            
+            print(f"[INFO] Using velocity sequence with {len(velocity_sequence)} entries")
+            for i, entry in enumerate(velocity_sequence):
+                print(f"  Sequence {i}: lin_vel_x={entry['x']}, lin_vel_y={entry['y']}, ang_vel_z={entry['ang']}")
+        except Exception as e:
+            print(f"[ERROR] Failed to parse velocity sequence: {e}")
+            print("[INFO] Format should be a JSON array of objects with 'x', 'y', 'ang' keys")
+            print("[INFO] Example: '[{\"x\":1.0,\"y\":0.0,\"ang\":0.0},{\"x\":0.0,\"y\":0.0,\"ang\":0.0}]'")
+            velocity_sequence = []
+
+
     # simulate environment
     while simulation_app.is_running():
         start_time = time.time()
+        
+        # Change velocity command if using sequence
+        if args_cli.use_velocity_sequence and velocity_sequence and timestep % args_cli.velocity_sequence_interval == 0:
+            # Get the next velocity in the sequence (cycling through the list)
+            entry = velocity_sequence[current_velocity_index]
+            x, y, ang = entry['x'], entry['y'], entry['ang']
+            current_velocity_index = (current_velocity_index + 1) % len(velocity_sequence)
+            
+            print(f"[INFO] Changing velocity command to: x={x}, y={y}, ang={ang}")
+                                
+            velocity_term = env.unwrapped.command_manager.get_term("base_velocity")
+            # Disable heading command to prevent it from overriding angular velocity
+            velocity_term.cfg.heading_command = False
+            
+            # Modify the velocity command directly
+            velocity_term.vel_command_b[:, 0] = x  # x velocity
+            velocity_term.vel_command_b[:, 1] = y  # y velocity
+            velocity_term.vel_command_b[:, 2] = ang  # angular velocity
+            
+            obs, _ = env.get_observations()
+
+        
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
             actions = policy(obs)
-            # print shape of obs and actions
-            print(f"Obs shape: {obs.shape}")
-            print(f"Actions shape: {actions.shape}")
+            # Print information (simplified for readability)
+            # if timestep % 10 == 0:  # Only print every 10 steps to reduce output
+            #     print(f"Timestep: {timestep}")
 
-            # Access linear velocity from the environment
-            if hasattr(env.unwrapped, 'robot'):
-                # For DirectRLEnv implementations
-                lin_vel = env.unwrapped.robot.data.root_lin_vel_b
-                print(f"Linear velocity (body frame): {lin_vel[0]}")
-            elif hasattr(env.unwrapped, 'scene'):
-                # For ManagerBasedEnv implementations
-                try:
-                    robot = env.unwrapped.scene['robot']
-                    lin_vel = robot.data.root_lin_vel_b
-                    print(f"Linear velocity shape: {lin_vel.shape}")
-                    print(f"Linear velocity (body frame): {lin_vel[0]}")
-                except KeyError:
-                    print("Robot entity not found in scene")
+            #     # print shape of actions
+            #     print(f"Actions shape: {actions.shape}")
+            #     # print shape of obs
+            #     print(f"Obs shape: {obs.shape}")
+
+            # Log data if enabled
+            if args_cli.log_data and timestep % args_cli.log_interval == 0:
+                # Get linear velocity from the environment
+                lin_vel = None
+                if hasattr(env.unwrapped, 'scene'):
+                    try:
+                        lin_vel = env.unwrapped.scene['robot'].data.root_lin_vel_b.cpu().numpy().tolist()
+                    except KeyError:
+                        print("Robot entity not found in scene")
+                
+                # Convert tensors to lists for JSON serialization
+                obs_list = obs.cpu().numpy().tolist()
+                actions_list = actions.cpu().numpy().tolist()
+                
+                #     # Access and print linear velocity from the environment
+                #     if hasattr(env.unwrapped, 'scene'):
+                #         try:
+                #             robot = env.unwrapped.scene['robot']
+                #             lin_vel = robot.data.root_lin_vel_b
+                #             # print shape of lin_vel
+                #             print(f"Lin_vel shape: {lin_vel.shape}")
+                #             print(f"Actual velocity: x={lin_vel[0, 0]:.2f}, y={lin_vel[0, 1]:.2f}, z={lin_vel[0, 2]:.2f}")
+                #         except KeyError:
+                #             print("Robot entity not found in scene")
+                    # Get command velocity if available
+
+                
+                # Store data for this timestep
+                timestep_data = {
+                    "timestep": timestep,
+                    "observations": obs_list,
+                    "actions": actions_list,
+                    "linear_velocity": lin_vel,
+
+                }
+                logged_data.append(timestep_data)
             
             # env stepping
             obs, _, _, _ = env.step(actions)
-        if args_cli.video:
-            timestep += 1
-            # Exit the play loop after recording one video
-            if timestep == args_cli.video_length:
-                break
+        
+        timestep += 1
+        if args_cli.video and timestep == args_cli.video_length:
+            break
 
         # time delay for real-time evaluation
         sleep_time = dt - (time.time() - start_time)
         if args_cli.real_time and sleep_time > 0:
             time.sleep(sleep_time)
+
+    # Save logged data to JSON file if enabled
+    if args_cli.log_data and logged_data:
+        import json
+        log_path = os.path.join(log_dir, args_cli.log_file)
+        with open(log_path, 'w') as f:
+            json.dump(logged_data, f, indent=2)
+        print(f"[INFO] Saved logged data to {log_path}")
+        
+        # Generate and save metadata if requested
+        if args_cli.save_metadata:
+            # Create a simplified metadata structure
+            metadata = {
+                "description": "Observation terms and data shapes",
+                "observation_terms": [],
+                "data_shapes": {}
+            }
+
+            observation_terms = [[k, v] for k, v in env.cfg.observations.policy.__dict__.items()]
+            for val in observation_terms:
+                if isinstance(val[1], ObservationTermCfg):
+                    # Just add the name of the observation term
+                    metadata["observation_terms"].append(val[0])
+            
+            # Add data shape information
+            if len(logged_data) > 0:
+                sample_entry = logged_data[0]
+                
+                # Get shapes of key data elements
+                for key, value in sample_entry.items():
+                    if key in ["observations", "actions", "linear_velocity"]:
+                        if isinstance(value, list):
+                            # Determine the shape
+                            shape = []
+                            current = value
+                            while isinstance(current, list) and len(current) > 0:
+                                shape.append(len(current))
+                                current = current[0]
+                            
+                            metadata["data_shapes"][key] = shape
+            
+            # Save metadata
+            metadata_path = os.path.join(log_dir, args_cli.metadata_file)
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            print(f"[INFO] Saved simplified metadata to {metadata_path}")
 
     # close the simulator
     env.close()

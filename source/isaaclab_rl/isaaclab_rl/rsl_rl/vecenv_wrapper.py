@@ -70,11 +70,15 @@ class RslRlVecEnvWrapper(VecEnv):
         self.num_envs = self.unwrapped.num_envs
         self.device = self.unwrapped.device
         self.max_episode_length = self.unwrapped.max_episode_length
+
         # obtain dimensions of the environment
         if hasattr(self.unwrapped, "action_manager"):
             self.num_actions = self.unwrapped.action_manager.total_action_dim
         else:
             self.num_actions = gym.spaces.flatdim(self.unwrapped.single_action_space)
+
+        self._modify_action_space()
+        
         if hasattr(self.unwrapped, "observation_manager"):
             self.num_obs = self.unwrapped.observation_manager.group_obs_dim["policy"][0]
         else:
@@ -247,3 +251,22 @@ class RslRlVecEnvWrapper(VecEnv):
 
     def close(self):  # noqa: D102
         return self.env.close()
+    
+
+    """
+    Helper functions
+    """
+
+    def _modify_action_space(self):
+        """Modifies the action space to the clip range."""
+        if self.clip_actions is None:
+            return
+
+        # modify the action space to the clip range
+        # note: this is only possible for the box action space. we need to change it in the future for other action spaces.
+        self.env.unwrapped.single_action_space = gym.spaces.Box(
+            low=-self.clip_actions, high=self.clip_actions, shape=(self.num_actions,)
+        )
+        self.env.unwrapped.action_space = gym.vector.utils.batch_space(
+            self.env.unwrapped.single_action_space, self.num_envs
+        )
